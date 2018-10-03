@@ -1,0 +1,19 @@
+Monitored directory is : linux-4.14.3/
+Verification file is : b1/verificationDB
+Report file is : b1/info.txt
+WARNING:  new Directory found: linux-4.14.3/test
+WARNING:  new file found: linux-4.14.3/test/ka.txt
+linux-4.14.3/test/ka.txt | -rw-rw-r-- | sameer | sameer | 0 | 1527351368 | da39a3ee5e6b4b0d3255bfef95601890afd80709
+WARNING:  owner changed for file linux-4.14.3/block/bio.c
+WARNING:  owner group changed for file linux-4.14.3/block/bio.c
+WARNING:  file size changed for file linux-4.14.3/README
+WARNING:  last modified changed for file linux-4.14.3/README
+WARNING:  message digest changed for file linux-4.14.3/README
+WARNING:  access rights changed for file linux-4.14.3/ipc/mqueue.c
+WARNING: linux-4.14.3/COPYING  was removed 
+WARNING: linux-4.14.3/MAINTAINERS  was removed 
+WARNING: linux-4.14.3/Makefile  was removed 
+total directories parsed: 4292
+total files parsed: 61256
+total warnings: 11
+time to complete verification mode is :  4152743 (ms)

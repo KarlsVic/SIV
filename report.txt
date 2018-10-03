@@ -1,0 +1,5 @@
+Monitored directory is : linux-4.14.3/
+verification file is : b1/verificationDB
+total directories parsed: 4291
+total files parsed: 61258
+time to complete initialisation mode is :  257123 (ms)

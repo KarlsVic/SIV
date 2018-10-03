@@ -1,0 +1,433 @@
+#!/bin/bash 
+
+siv_usage(){
+echo "Usage: siv <-i|-v|-h> –D <monitored_directory> -V <verification_file> -R <report_file> -H <hash_function>" 
+exit 1 
+}
+
+siv_help(){
+echo "Usage: siv <-i|-v|-h> –D <monitored_directory> -V <verification_file> -R <report_file> -H <hash_function>" 
+echo "where i: initialization mode"
+echo "      v: verification mode"
+echo "      h: help"
+echo "      Full path should be given for all command line arguments"
+echo "      The hash functions supported are md5,sha,sha256,sha512 and other hash functions supported by your Unix Operating system"
+echo "      Example for Initialization mode: 
+      sudo siv -i -D ~/Desktop -V ~/a1/verificationDB -R ~/a1/report.txt -H sha256
+      Example for Verification mode: 
+      sudo siv -v -D ~/Desktop -V ~/a1/verificationDB -R ~/a1/report2.txt 
+      The hash functions should be given in the command line as md5 or sha or sha256, etc."
+exit 1 
+}
+
+w=0
+f=0
+d=0
+dv=0
+fv=0
+
+function file_info() {
+
+    shopt -s nullglob
+    if [ -z $ver_file ]; then
+        ver_file=$2
+    fi
+    if [ -z $func ]; then
+        func=$3
+    fi
+   
+    while read -rd $'\0' file; do
+    echo -n $( stat --format " %n | %a | %U | %G | %s | %Y " "$file" ) >> $ver_file
+        echo -n " | " >> $ver_file
+        echo -n $( $func "$file" | awk {'print $1'} ) >> $ver_file
+        echo -n " | " >> $ver_file
+        echo $func >> $ver_file   
+        ((f++))
+    done < <(find  $1 -type f -name '**' -print0)
+
+    while read -rd $'\0' dir; do
+    ((d++))
+    echo $( stat --format " %n | %a | %U | %G |  | %Y |" "$dir" ) >> $ver_file
+    done < <(find  $1 -mindepth 1 -type d -name '**' -print0)
+
+}
+
+initialization_mode(){
+
+echo System Integration Verifier
+echo "Num of Arguments: " $#
+
+          echo inside initialization mode
+         
+          if [ "$1" == "-D" ]; then
+             mon_dir=$2 
+             echo Monitored directory is : $mon_dir
+             shift 2
+          else 
+             siv_usage
+          fi
+test -d $mon_dir && echo "Monitored directory : $mon_dir exists"|| echo "Monitored directory : $mon_dir does not exists"
+
+if [ "$1" == "-V" ]; then
+             verify_file=$2 
+             echo "verification file is :"$verify_file
+             shift 2
+          else 
+             siv_usage
+          fi
+
+
+if [ "$1" == "-R" ]; then
+             report_file=$2 
+             echo "report file is :"$report_file
+             shift 2
+          else 
+             siv_usage
+          fi
+
+verify_dir=$(dirname $verify_file)
+report_dir=$(dirname $report_file)
+echo $verify_dir $report_dir
+
+if [[ $mon_dir == *"$verify_dir"* || $mon_dir == *"$report_dir"* ]]; then
+  
+  echo "ERROR: the verification file and report file should be outside the monitored directory"
+  exit
+else
+echo "Monitored directory is different from verification file and report file directory"
+fi
+
+if [ "$1" == "-H" ]; then
+             hash_func=$2sum 
+             echo "hash function is :"$hash_func
+             shift 2
+          else 
+             siv_usage
+          fi
+
+if type $hash_func 2> /dev/null ; then
+ echo "$hash_func is supported."
+else
+echo "$hash_func is not supported"
+exit 1
+fi
+
+
+ if [ -e $verify_file ]; then
+    echo "file $verify_file exist. Do you want overwrite it? (y/n)" 
+    read yn                                              
+    if [ $yn = "N" -o $yn = "n" ]; then
+        exit 0
+    fi
+    else
+      
+    echo "" > $verify_file
+    fi
+
+
+if [ -e $report_file ]; then
+    echo "file $report_file exist. Do you want overwrite it? (y/n)" 
+    read yn                                              
+    if [ $yn = "N" -o $yn = "n" ]; then
+        exit 0
+    fi
+    else
+      
+    echo "" > $report_file
+    fi
+
+
+echo -n "" > $verify_file
+echo -n "" > $report_file
+echo Monitored directory is : $mon_dir >> $report_file
+echo "verification file is : "$verify_file >> $report_file
+
+START=$(($(date +%s%N)/1000000))
+file_info "$mon_dir" $verify_file $hash_func 
+
+
+echo total directories parsed: $d >> $report_file
+echo total files parsed: $f >> $report_file
+
+END=$(($(date +%s%N)/1000000))
+i=$(( $END - $START ))
+echo "time to complete initialisation mode is : " $i "(ms)" >> $report_file
+}
+
+
+function file_verf() {
+    shopt -s nullglob
+    if [ -z $ver_file1 ]; then
+        ver_file1=$2
+    fi
+    if [ -z $rep_file ]; then
+        rep_file=$3
+    fi
+    if [ -z $func_calc ]; then
+        func_calc=$( cut -d'|' -f8 $ver_file1 | uniq | grep sum | uniq )        
+    fi
+
+    while read -rd $'\0' dir; do
+    
+    ((dv++))        
+        if grep -q "$dir |" $ver_file1
+	then
+	echo -n "" >> $rep_file
+        access_rights_calc_dir=$( stat --format "%a" "$dir" )
+        user_file_calc_dir=$( stat --format "%U" "$dir" )
+        group_file_calc_dir=$( stat --format "%G" "$dir" )
+        mod_tim_calc_dir=$( stat --format "%Y" "$dir" )
+        access_rights_dir=$( grep "$dir |" $ver_file1 | cut -d'|' -f2  )
+        user_file_dir=$( grep "$dir |" $ver_file1 | cut -d'|' -f3 )
+        group_file_dir=$( grep "$dir |" $ver_file1 | cut -d'|' -f4 )
+        mod_tim_dir=$( grep "$dir |" $ver_file1 | cut -d'|' -f6 )             
+        if [ $access_rights_calc_dir != $access_rights_dir ]; then
+            echo "WARNING:  access rights changed for directory $dir" >> $rep_file          
+            ((w++))
+        fi
+        if [ $user_file_calc_dir != $user_file_dir ]; then
+            echo "WARNING:  owner changed for directory $dir" >> $rep_file
+            
+            ((w++))
+        fi
+        
+        if [ $group_file_calc_dir != $group_file_dir ]; then
+            echo "WARNING:  owner group changed for directory $dir" >> $rep_file
+            
+            ((w++))
+        fi
+        
+        if [ $mod_tim_calc_dir != $mod_tim_dir ]; then
+            echo "WARNING:  last modified changed for directory $dir" >> $rep_file
+            echo $file1 $mod_tim_calc_dir $mod_tim_dir >> $rep_file
+            ((w++))
+        fi
+
+	else
+		if [ -e "`eval echo ${dir//>}`" ]; then
+			
+			echo "WARNING:  new Directory found: $dir" >> $rep_file
+			((w++))
+		fi
+	fi    
+
+    done < <(find  $1 -mindepth 1 -type d -name '**' -print0)
+
+
+   while read -rd $'\0' file; do
+
+        if grep -qG "$file |" $ver_file1
+	then
+        
+        ver_info=$( grep -G "$file " $ver_file1 )
+        
+        access_rights_calc=$( stat --format "%a" "$file" )
+        user_file_calc=$( stat --format "%U" "$file" )
+        group_file_calc=$( stat --format "%G" "$file" )
+        size_file_calc=$( stat --format "%s" "$file" )
+        mod_tim_calc=$( stat --format "%Y" "$file" )
+        hash_calc=$( $func_calc "$file" | awk {'print $1'} )
+        
+        access_rights=$( grep "$file |" $ver_file1 | cut -d'|' -f2  )
+        user_file=$( grep "$file |" $ver_file1 | cut -d'|' -f3 )
+        group_file=$( grep "$file |" $ver_file1 | cut -d'|' -f4 )
+        size_file=$( grep "$file |" $ver_file1 | cut -d'|' -f5 )
+        mod_tim=$( grep "$file |" $ver_file1 | cut -d'|' -f6 )
+        hash_value=$( grep "$file |" $ver_file1 | cut -d'|' -f7 )
+        if [ $access_rights_calc != $access_rights ]; then
+            echo "WARNING:  access rights changed for file $file" >> $rep_file
+            ((w++))
+        fi
+        if [ $user_file_calc != $user_file ]; then
+            echo "WARNING:  owner changed for file $file" >> $rep_file        
+            ((w++))
+        fi        
+        if [ $group_file_calc != $group_file ]; then
+            echo "WARNING:  owner group changed for file $file" >> $rep_file
+            ((w++))
+        fi        
+        if [ $size_file_calc -ne $size_file ]; then
+           echo "WARNING:  file size changed for file $file" >> $rep_file
+            ((w++))
+        fi        
+        if [ $mod_tim_calc != $mod_tim ]; then
+            echo "WARNING:  last modified changed for file $file" >> $rep_file
+           
+            ((w++))
+        fi        
+        if [ $hash_calc != $hash_value ]; then
+            echo "WARNING:  message digest changed for file $file" >> $rep_file
+            ((w++))
+        fi
+
+	else
+            if [ -e "`eval echo ${file//>}`" ]; then		
+	 	echo "WARNING:  new file found: $file" >> $rep_file
+		((w++))
+		echo -n $( stat --format " %n | %A | %U | %G | %s | %Y | " "$file" )  >> $rep_file 
+		echo -n " " >> $rep_file
+		$func_calc $file | awk {'print $1'} >>$rep_file
+            fi
+
+	fi
+        ((fv++))
+
+
+    done < <(find  $1 -type f -name '**' -print0)
+
+
+}
+
+
+verification_mode(){
+
+echo System Integration Verifier
+echo "Num of Arguments: " $#
+
+          echo inside verification mode
+         
+          if [ "$1" == "-D" ]; then
+             mon_dir1=$2 
+             echo Monitored directory is : $mon_dir1
+             shift 2
+          else 
+             siv_usage
+          fi
+
+if [ "$1" == "-V" ]; then
+             verify_file1=$2 
+             echo "verification file is :"$verify_file1
+             shift 2
+          else 
+             siv_usage
+          fi
+
+if [ -e $verify_file1 ]; then
+  echo "Verification file $verify_file1 exist"
+else
+  echo "Verification file $verify_file1 does not exist"
+  exit
+fi
+
+
+if [ "$1" == "-R" ]; then
+             report_file1=$2 
+             echo "report file is :"$report_file1
+             shift 2
+          else 
+             siv_usage
+          fi
+
+verify_dir1=$(dirname $verify_file1)
+report_dir1=$(dirname $report_file1)
+
+if [[ $mon_dir1 == *"$verify_dir1"* || $mon_dir1 == *"$report_dir1"* ]]; then
+  
+  echo "ERROR: the verification file and report file should be outside the monitored directory"
+  exit
+else
+echo "Monitored directory is different from verification file and report file directory"
+fi
+
+
+if [ ! -f $report_file1 ]; then 
+    touch $report_file1
+fi
+echo -n "" > $report_file1
+
+echo Monitored directory is : $mon_dir1 >> $report_file1
+echo "Verification file is : "$verify_file1 >> $report_file1
+echo "Report file is : "$report_file1 >> $report_file1
+
+START1=$(($(date +%s%N)/1000000))
+
+file_verf "$mon_dir1" $verify_file1 $report_file1
+
+
+while read p; do
+
+  Q=$(echo $p|cut  -d'|' -f1)
+  DIR=$Q
+#echo "Q:  $DIR " 
+if [ "${DIR:0:1}" = "/" ]; then
+   #echo yes
+   if [ -e "`eval echo ${DIR//>}`" ]; then
+     echo -n "" 
+  else
+     echo "WARNING: $Q was removed "  >> $report_file1
+     ((w++))
+  fi
+
+else
+   #echo no
+   R=~/${Q}
+  
+  P="`eval echo ${R//>}`"
+  #echo "P: $P"  
+  if [ -e "$P" ]; then
+     echo -n "" 
+  else
+     echo "WARNING: $Q was removed "  >> $report_file1
+     ((w++))
+  fi
+
+
+fi
+
+done < $verify_file1
+
+echo total directories parsed: $dv >> $report_file1
+echo total files parsed: $fv >> $report_file1
+echo total warnings: $w >> $report_file1
+
+END1=$(($(date +%s%N)/1000000))
+j=$(( $END1 - $START1 ))
+echo "time to complete verification mode is : " $j "(ms)" >> $report_file1
+
+}
+
+
+
+while :
+do
+    case "$1" in
+      (-i)
+          if [ $# -le 8 ]; then
+            siv_usage    
+            exit 1
+          fi
+          shift
+          
+          initialization_mode $@
+
+          break
+          ;;
+      (-v)
+         if [ $# -le 6 ]; then
+            echo Verificaiton mode   
+          fi
+          shift
+          verification_mode $@ 
+          break
+          ;;
+      (-h)
+          siv_help
+          break
+           ;;
+      --) 
+          echo ERROR
+          break
+          ;;
+      -*)
+          echo "$0: Error: Invalid option: -- $1" >&2
+          echo "Try 'siv -h' for more information" >&2
+          
+          exit 1 
+          ;;
+      *)  
+          siv_usage
+          break
+          ;;
+    esac
+done
+
